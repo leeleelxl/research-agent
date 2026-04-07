@@ -32,8 +32,8 @@
 
 | # | 任务 | 优先级 | 说明 |
 |---|------|--------|------|
-| 17 | 接入 HotpotQA 跑正式消融实验 | P0 | 当前只有 20 doc + 10 QA，需要公开 benchmark 出硬数字 |
-| 18 | 改进经验匹配策略 | P0 | 当前简单关键词注入效果为负（MRR 下降），需改为相似度匹配 |
+| 17 | 接入 HotpotQA 跑正式消融实验 | done | naive+vector 最优 71.2% Recall@5, 0.852 MRR |
+| 18 | 改进经验匹配 v2（相似度匹配） | done | 消除负面效果，但正向提升未实现，需 v3 |
 | 19 | Web 可视化（多 Agent 执行过程） | P1 | 复用 AgentProbe |
 | 20 | README + 技术博客 | P1 | |
 | 21 | Fine-tune embedding（AutoDL 租卡） | P2 | 用 Agent 运行数据训练，最后做 |

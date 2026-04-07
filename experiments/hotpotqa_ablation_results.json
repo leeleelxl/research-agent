@@ -1,64 +1,64 @@
 {
   "naive+bm25": {
-    "recall@2": 0.46,
-    "recall@5": 0.64,
-    "mrr": 0.7266666666666667,
-    "full_hit_rate": 0.36,
-    "n": 50,
-    "time_seconds": 21.1
+    "recall@2": 0.4525,
+    "recall@5": 0.585,
+    "mrr": 0.7223333333333335,
+    "full_hit_rate": 0.31,
+    "n": 200,
+    "time_seconds": 67.0
   },
   "naive+vector": {
-    "recall@2": 0.57,
-    "recall@5": 0.71,
-    "mrr": 0.85,
-    "full_hit_rate": 0.44,
-    "n": 50,
-    "time_seconds": 18.1
+    "recall@2": 0.56,
+    "recall@5": 0.7125,
+    "mrr": 0.8524166666666667,
+    "full_hit_rate": 0.465,
+    "n": 200,
+    "time_seconds": 68.9
   },
   "naive+hybrid": {
-    "recall@2": 0.55,
-    "recall@5": 0.64,
-    "mrr": 0.7773333333333333,
-    "full_hit_rate": 0.38,
-    "n": 50,
-    "time_seconds": 17.7
+    "recall@2": 0.4825,
+    "recall@5": 0.5725,
+    "mrr": 0.7753333333333334,
+    "full_hit_rate": 0.27,
+    "n": 200,
+    "time_seconds": 67.1
   },
   "sw+bm25": {
-    "recall@2": 0.38,
-    "recall@5": 0.57,
-    "mrr": 0.696,
-    "full_hit_rate": 0.24,
-    "n": 50,
-    "time_seconds": 25.4
+    "recall@2": 0.3625,
+    "recall@5": 0.5375,
+    "mrr": 0.6882499999999999,
+    "full_hit_rate": 0.245,
+    "n": 200,
+    "time_seconds": 120.2
   },
   "sw+vector": {
-    "recall@2": 0.47,
-    "recall@5": 0.64,
-    "mrr": 0.8246666666666665,
-    "full_hit_rate": 0.32,
-    "n": 50,
-    "time_seconds": 26.2
+    "recall@2": 0.435,
+    "recall@5": 0.6325,
+    "mrr": 0.8164999999999999,
+    "full_hit_rate": 0.355,
+    "n": 200,
+    "time_seconds": 144.2
   },
   "sw+hybrid": {
-    "recall@2": 0.53,
-    "recall@5": 0.64,
-    "mrr": 0.7913333333333334,
-    "full_hit_rate": 0.36,
-    "n": 50,
-    "time_seconds": 26.8
+    "recall@2": 0.44,
+    "recall@5": 0.55,
+    "mrr": 0.7625000000000002,
+    "full_hit_rate": 0.25,
+    "n": 200,
+    "time_seconds": 139.8
   },
   "sw+hybrid (test_split)": {
-    "recall@2": 0.5,
-    "recall@5": 0.66,
-    "mrr": 0.7746666666666667,
-    "full_hit_rate": 0.32,
-    "n": 25
+    "recall@2": 0.425,
+    "recall@5": 0.54,
+    "mrr": 0.7598333333333334,
+    "full_hit_rate": 0.24,
+    "n": 100
   },
   "sw+hybrid+exp (test_split)": {
-    "recall@2": 0.46,
-    "recall@5": 0.6,
-    "mrr": 0.704,
-    "full_hit_rate": 0.28,
-    "n": 25
+    "recall@2": 0.435,
+    "recall@5": 0.555,
+    "mrr": 0.7556666666666668,
+    "full_hit_rate": 0.27,
+    "n": 100
   }
 }
