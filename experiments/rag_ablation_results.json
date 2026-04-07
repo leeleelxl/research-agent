@@ -1,0 +1,50 @@
+{
+  "naive+bm25": {
+    "recall@5": 0.8,
+    "mrr": 0.8,
+    "total": 10,
+    "hits": 8
+  },
+  "naive+vector": {
+    "recall@5": 0.9,
+    "mrr": 0.85,
+    "total": 10,
+    "hits": 9
+  },
+  "naive+hybrid": {
+    "recall@5": 0.9,
+    "mrr": 0.9,
+    "total": 10,
+    "hits": 9
+  },
+  "naive+hybrid+experience": {
+    "recall@5": 0.9,
+    "mrr": 0.75,
+    "total": 10,
+    "hits": 9
+  },
+  "sentence_window+bm25": {
+    "recall@5": 0.8,
+    "mrr": 0.8,
+    "total": 10,
+    "hits": 8
+  },
+  "sentence_window+vector": {
+    "recall@5": 0.9,
+    "mrr": 0.8333333333333334,
+    "total": 10,
+    "hits": 9
+  },
+  "sentence_window+hybrid": {
+    "recall@5": 0.9,
+    "mrr": 0.77,
+    "total": 10,
+    "hits": 9
+  },
+  "sentence_window+hybrid+experience": {
+    "recall@5": 0.9,
+    "mrr": 0.4999999999999999,
+    "total": 10,
+    "hits": 9
+  }
+}
