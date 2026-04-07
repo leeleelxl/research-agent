@@ -119,11 +119,16 @@ class ResearchCoordinator:
         if state.review.get("gaps"):
             context["previous_gaps"] = state.review["gaps"]
 
+        print(f"  [{name}] running...")
         result = agent.run(task, context=context)
+        print(f"  [{name}] done | tools: {len(result.tool_calls_made)} | output: {len(result.output)} chars")
 
         # 更新 token 统计
         state.total_tokens["input"] += result.total_tokens.get("input", 0)
         state.total_tokens["output"] += result.total_tokens.get("output", 0)
+
+        # 根据 Agent 角色，把输出写回 SharedState
+        self._update_state(name, result, state)
 
         # 记录
         state.agent_results.append({
@@ -136,6 +141,100 @@ class ResearchCoordinator:
         })
 
         return state
+
+    def _update_state(self, agent_name: str, result: AgentResult, state: SharedState):
+        """根据 Agent 角色解析输出，更新 SharedState"""
+        if agent_name == "planner":
+            # 从 tool_calls 或文本中提取子问题
+            for tc in result.tool_calls_made:
+                if tc["tool"] == "decompose_question":
+                    sub_qs = tc["args"].get("sub_questions", [])
+                    if sub_qs:
+                        state.sub_questions = sub_qs
+                        return
+            # 回退：从输出文本中按行提取
+            lines = result.output.strip().split("\n")
+            questions = []
+            for line in lines:
+                line = line.strip()
+                if line and (line[0].isdigit() or line.startswith("-") or line.startswith("*")):
+                    # 去掉编号前缀
+                    clean = line.lstrip("0123456789.-*) ").strip()
+                    if clean and len(clean) > 10:
+                        questions.append(clean)
+            if questions:
+                state.sub_questions = questions[:5]
+
+        elif agent_name == "retriever":
+            # Retriever 的输出就是检索摘要，存为 papers 信息
+            if result.output and len(result.output) > 50:
+                state.papers.append({
+                    "round": state.rounds_completed,
+                    "source": "retriever_output",
+                    "content": result.output,
+                })
+            # 从 tool calls 中也收集
+            for tc in result.tool_calls_made:
+                if tc["tool"] in ("semantic_scholar_search", "arxiv_search"):
+                    state.papers.append({
+                        "round": state.rounds_completed,
+                        "source": tc["tool"],
+                        "query": tc["args"].get("query", ""),
+                        "content": tc["result"][:1000],
+                    })
+
+        elif agent_name == "reader":
+            # Reader 的结构化笔记
+            for tc in result.tool_calls_made:
+                if tc["tool"] == "extract_paper_info":
+                    state.notes.append(tc["args"])
+            # 也保存自由文本输出
+            if result.output and len(result.output) > 50:
+                state.notes.append({
+                    "source": "reader_summary",
+                    "content": result.output,
+                })
+
+        elif agent_name == "writer":
+            # Writer 的输出就是综述草稿
+            state.draft = result.output
+            # 也从 write_section 工具调用中拼接
+            if not state.draft or len(state.draft) < 100:
+                sections = []
+                for tc in result.tool_calls_made:
+                    if tc["tool"] == "write_section":
+                        title = tc["args"].get("section_title", "")
+                        content = tc["args"].get("content", "")
+                        sections.append(f"## {title}\n\n{content}")
+                if sections:
+                    state.draft = "\n\n".join(sections)
+
+        elif agent_name == "critic":
+            # Critic 的评分和反馈
+            for tc in result.tool_calls_made:
+                if tc["tool"] == "score_review":
+                    args = tc["args"]
+                    scores = [
+                        args.get("coverage", 0),
+                        args.get("accuracy", 0),
+                        args.get("coherence", 0),
+                        args.get("depth", 0),
+                    ]
+                    avg = sum(scores) / len(scores) if scores else 0
+                    state.review = {
+                        "score": avg,
+                        "coverage": args.get("coverage", 0),
+                        "accuracy": args.get("accuracy", 0),
+                        "coherence": args.get("coherence", 0),
+                        "depth": args.get("depth", 0),
+                        "gaps": args.get("gaps", []),
+                        "suggestions": args.get("suggestions", []),
+                    }
+                    print(f"  [{agent_name}] score: {avg:.1f} | gaps: {args.get('gaps', [])}")
+                    return
+            # 回退：从文本中提取
+            if result.output:
+                state.review = {"score": 0, "text": result.output[:500]}
 
     def _build_retriever_task(self, state: SharedState) -> str:
         task = f"针对以下子问题检索相关学术论文：\n"
