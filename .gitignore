@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+.env
+*.db
+*.jsonl
+*.key
+.DS_Store
+.idea/
+.vscode/
+experiments/*/raw/
