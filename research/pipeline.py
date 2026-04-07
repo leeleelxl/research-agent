@@ -13,6 +13,7 @@ from pathlib import Path
 
 from .agents import PlannerAgent, RetrieverAgent, ReaderAgent, WriterAgent, CriticAgent
 from .coordinator import ResearchCoordinator
+from .memory import ExperienceStore
 from .tools.llm import LLMClient
 from .tools.all_tools import create_registry
 
@@ -22,6 +23,7 @@ def run_research(
     model: str = "gpt-4o-mini",
     max_rounds: int = 2,
     pass_threshold: float = 7.0,
+    experience_path: str = "experience.jsonl",
     api_base: str | None = None,
     api_key: str | None = None,
 ) -> dict:
@@ -55,6 +57,9 @@ def run_research(
     writer = WriterAgent(llm=llm, registry=registry)
     critic = CriticAgent(llm=llm, registry=registry)
 
+    # 创建经验存储（跨 session 持久化）
+    exp_store = ExperienceStore(experience_path)
+
     # 创建协调器
     coordinator = ResearchCoordinator(
         planner=planner,
@@ -65,18 +70,21 @@ def run_research(
         max_rounds=max_rounds,
         pass_threshold=pass_threshold,
     )
+    coordinator.set_experience_store(exp_store)
 
     # 执行
-    print(f"🔬 研究问题: {question}")
-    print(f"📋 模型: {model} | 最大轮次: {max_rounds} | 通过阈值: {pass_threshold}")
+    print(f"[research] question: {question}")
+    print(f"[research] model: {model} | max_rounds: {max_rounds} | threshold: {pass_threshold}")
+    print(f"[research] experience store: {exp_store.count} records loaded from {experience_path}")
     print("=" * 60)
 
     state = coordinator.run(question)
 
     # 输出摘要
     print("\n" + "=" * 60)
-    print("📊 执行摘要")
+    print("[summary]")
     print(coordinator.summary(state))
+    print(f"[experience] store now has {exp_store.count} records | avg score: {exp_store.avg_score:.1f}")
 
     return {
         "question": state.question,
@@ -88,4 +96,6 @@ def run_research(
         "rounds": state.rounds_completed,
         "tokens": state.total_tokens,
         "agent_results": state.agent_results,
+        "experience_rewrites": state.experience_rewrites,
+        "experience_count": exp_store.count,
     }

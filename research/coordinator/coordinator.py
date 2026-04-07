@@ -15,10 +15,13 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
 from ..agents.base import BaseAgent, AgentResult
+from ..memory.experience_store import ExperienceStore
+from ..rag.retriever import ExperienceRecord
 
 
 @dataclass
@@ -36,6 +39,10 @@ class SharedState:
     rounds_completed: int = 0
     agent_results: list[dict[str, Any]] = field(default_factory=list)
     total_tokens: dict[str, int] = field(default_factory=lambda: {"input": 0, "output": 0})
+
+    # 经验追踪
+    retrieval_queries: list[str] = field(default_factory=list)  # 本次用过的检索 query
+    experience_rewrites: list[dict[str, Any]] = field(default_factory=list)  # 经验改写记录
 
 
 @dataclass
@@ -67,6 +74,11 @@ class ResearchCoordinator:
         self.critic = critic
         self.max_rounds = max_rounds
         self.pass_threshold = pass_threshold
+        self.experience_store: ExperienceStore | None = None
+
+    def set_experience_store(self, store: ExperienceStore):
+        """接入经验存储，启用经验增强检索"""
+        self.experience_store = store
 
     def run(self, question: str) -> SharedState:
         """执行完整研究流程"""
@@ -95,13 +107,16 @@ class ResearchCoordinator:
             critic_task = self._build_critic_task(state)
             state = self._run_agent("critic", self.critic, state, task=critic_task)
 
+            # Phase 6: 经验沉淀 — Critic 反馈写入 ExperienceStore
+            self._save_experience(state)
+
             # 判断是否通过
             score = state.review.get("score", 0)
             if score >= self.pass_threshold:
                 state.final_output = state.draft
                 break
 
-            # 未通过 → 下一轮用 Critic 的反馈改进
+            # 未通过 -> 下一轮用 Critic 的反馈改进
 
         if not state.final_output:
             state.final_output = state.draft  # 达到最大轮次，返回最后版本
@@ -236,13 +251,94 @@ class ResearchCoordinator:
             if result.output:
                 state.review = {"score": 0, "text": result.output[:500]}
 
+    def _save_experience(self, state: SharedState):
+        """从 Critic 反馈中提取经验，写入 ExperienceStore
+
+        这是经验增强检索的数据来源：
+        - 每次 Critic 评估后，记录本轮检索 query + 评分 + 有效/无效关键词
+        - 下次检索时，ExperienceStore 提供历史经验指导 query 改写
+        """
+        if not self.experience_store:
+            return
+        if not state.review.get("score"):
+            return
+
+        score = state.review["score"]
+        gaps = state.review.get("gaps", [])
+
+        # 从 gaps 中提取缺失的关键词（Critic 说缺什么，就是 missed keywords）
+        missed_keywords = []
+        for gap in gaps:
+            # 提取引号或关键术语
+            terms = re.findall(r'["\u201c\u201d]([^"\u201c\u201d]+)["\u201c\u201d]', gap)
+            missed_keywords.extend(terms)
+            # 提取英文专业术语
+            eng_terms = re.findall(r'[a-zA-Z][\w-]{3,}(?:\s+[a-zA-Z][\w-]{2,}){0,2}', gap)
+            missed_keywords.extend(eng_terms)
+
+        # 从检索结果中提取有效关键词（检索到了且被 Writer 引用的）
+        helpful_keywords = []
+        for paper in state.papers[-8:]:
+            query = paper.get("query", "")
+            if query:
+                # 简单提取：query 中的词就是有效关键词
+                words = re.findall(r'[a-zA-Z][\w-]{3,}', query)
+                helpful_keywords.extend(words)
+
+        # 为每个子问题创建经验记录
+        for q in state.sub_questions:
+            record = ExperienceRecord(
+                original_query=q,
+                rewritten_query=None,
+                result_score=score,
+                keywords_that_helped=list(set(helpful_keywords))[:10],
+                keywords_that_missed=list(set(missed_keywords))[:10],
+            )
+            self.experience_store.add(record)
+
+        state.experience_rewrites.append({
+            "round": state.rounds_completed,
+            "score": score,
+            "helpful_count": len(helpful_keywords),
+            "missed_count": len(missed_keywords),
+            "total_experiences": self.experience_store.count,
+        })
+        print(f"  [experience] saved {len(state.sub_questions)} records | "
+              f"score={score:.1f} | store total={self.experience_store.count}")
+
     def _build_retriever_task(self, state: SharedState) -> str:
         task = f"针对以下子问题检索相关学术论文：\n"
         for i, q in enumerate(state.sub_questions, 1):
             task += f"{i}. {q}\n"
+
+        # 注入经验增强：从 ExperienceStore 获取历史有效关键词
+        if self.experience_store and self.experience_store.count > 0:
+            good_exp = self.experience_store.get_good_experiences(min_score=6.0, limit=10)
+            if good_exp:
+                all_helpful = []
+                for exp in good_exp:
+                    all_helpful.extend(exp.keywords_that_helped)
+                # 去重取高频
+                from collections import Counter
+                top_keywords = [kw for kw, _ in Counter(all_helpful).most_common(5)]
+                if top_keywords:
+                    task += f"\n## 历史经验建议\n"
+                    task += f"根据过去的检索经验，以下关键词能找到高质量论文：{', '.join(top_keywords)}\n"
+                    task += "请考虑在检索时加入这些关键词。\n"
+
+            bad_exp = self.experience_store.get_bad_experiences(max_score=5.0, limit=5)
+            if bad_exp:
+                all_missed = []
+                for exp in bad_exp:
+                    all_missed.extend(exp.keywords_that_missed)
+                top_missed = [kw for kw, _ in Counter(all_missed).most_common(3)]
+                if top_missed:
+                    task += f"\n历史上缺失的方向：{', '.join(top_missed)}\n"
+                    task += "请确保覆盖这些方面。\n"
+
         if state.review.get("gaps"):
-            task += f"\n上一轮评审发现的不足：\n"
-            for gap in state.review["gaps"][:3]:  # 最多 3 个 gap 避免 prompt 过长
+            task += f"\n## 上一轮评审不足\n"
+            for gap in state.review["gaps"][:3]:
                 task += f"- {gap}\n"
             task += "请重点补充这些方面的论文。"
         return task
@@ -313,13 +409,16 @@ class ResearchCoordinator:
 
     def summary(self, state: SharedState) -> str:
         """生成执行摘要"""
+        score = state.review.get("score", 0)
         lines = [
-            f"研究问题: {state.question}",
-            f"执行轮次: {state.rounds_completed}/{self.max_rounds}",
-            f"子问题: {len(state.sub_questions)} 个",
-            f"检索论文: {len(state.papers)} 篇",
-            f"最终评分: {state.review.get('score', '—')}",
-            f"Token 消耗: input={state.total_tokens['input']}, output={state.total_tokens['output']}",
-            f"Agent 调用: {len(state.agent_results)} 次",
+            f"  question: {state.question[:60]}",
+            f"  rounds: {state.rounds_completed}/{self.max_rounds}",
+            f"  sub_questions: {len(state.sub_questions)}",
+            f"  papers: {len(state.papers)}",
+            f"  score: {score:.1f}" if score else "  score: --",
+            f"  tokens: input={state.total_tokens['input']}, output={state.total_tokens['output']}",
+            f"  agents_called: {len(state.agent_results)}",
         ]
+        if state.experience_rewrites:
+            lines.append(f"  experience_saves: {len(state.experience_rewrites)}")
         return "\n".join(lines)
