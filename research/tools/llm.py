@@ -95,12 +95,21 @@ class LLMClient:
 
         tool_calls = list(tool_calls_data.values()) if tool_calls_data else None
 
+        # Token 统计：优先用 API 返回值，回退到字符数估算
+        input_tokens = usage.get("prompt_tokens", 0)
+        output_tokens = usage.get("completion_tokens", 0)
+        if input_tokens == 0 and output_tokens == 0:
+            # 中转站 stream 模式不返回 usage，用字符数估算（中文约 1.5 字/token）
+            input_chars = sum(len(json.dumps(m, ensure_ascii=False)) for m in messages)
+            output_chars = len(content) + sum(
+                len(tc["function"]["arguments"]) for tc in tool_calls_data.values()
+            )
+            input_tokens = max(1, input_chars // 2)
+            output_tokens = max(1, output_chars // 2)
+
         return LLMResponse(
             content=content or None,
             tool_calls=tool_calls,
-            usage={
-                "input": usage.get("prompt_tokens", 0),
-                "output": usage.get("completion_tokens", 0),
-            },
+            usage={"input": input_tokens, "output": output_tokens},
             model=model,
         )

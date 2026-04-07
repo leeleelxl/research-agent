@@ -241,32 +241,74 @@ class ResearchCoordinator:
         for i, q in enumerate(state.sub_questions, 1):
             task += f"{i}. {q}\n"
         if state.review.get("gaps"):
-            task += f"\n上一轮评审发现的不足：{', '.join(state.review['gaps'])}"
-            task += "\n请重点补充这些方面的论文。"
+            task += f"\n上一轮评审发现的不足：\n"
+            for gap in state.review["gaps"][:3]:  # 最多 3 个 gap 避免 prompt 过长
+                task += f"- {gap}\n"
+            task += "请重点补充这些方面的论文。"
         return task
 
     def _build_reader_task(self, state: SharedState) -> str:
-        return f"精读检索到的 {len(state.papers)} 篇论文，提取每篇的核心方法、实验结果和关键结论。"
+        task = "精读以下检索到的论文，对每篇用 extract_paper_info 工具提取结构化信息。\n\n"
+        task += "## 检索到的论文\n\n"
+        for i, paper in enumerate(state.papers[-8:], 1):  # 最近 8 篇
+            content = paper.get("content", "")[:400]
+            source = paper.get("source", "unknown")
+            task += f"### 论文 {i} (来源: {source})\n{content}\n\n"
+        if not state.papers:
+            task += "(暂无检索结果，请根据研究问题自行分析)\n"
+        return task
 
     def _build_writer_task(self, state: SharedState) -> str:
-        task = f"基于以下子问题和论文笔记，生成一篇结构化的文献综述：\n"
-        task += f"研究问题：{state.question}\n"
-        task += f"子问题数量：{len(state.sub_questions)}\n"
-        task += f"论文数量：{len(state.papers)}\n"
+        task = "基于以下材料，生成一篇结构化的文献综述。\n\n"
+        task += f"## 研究问题\n{state.question}\n\n"
+
+        task += "## 子问题\n"
+        for i, q in enumerate(state.sub_questions, 1):
+            task += f"{i}. {q}\n"
+
+        task += "\n## 论文笔记\n"
+        if state.notes:
+            for i, note in enumerate(state.notes[-10:], 1):  # 最近 10 条笔记
+                if isinstance(note, dict):
+                    title = note.get("title", note.get("source", f"笔记{i}"))
+                    findings = note.get("key_findings", note.get("content", ""))[:300]
+                    method = note.get("methodology", "")[:200]
+                    task += f"\n### {title}\n"
+                    task += f"- 关键发现: {findings}\n"
+                    if method:
+                        task += f"- 方法: {method}\n"
+        else:
+            task += "(暂无结构化笔记，请根据检索结果自行综合)\n"
+
         if state.review.get("suggestions"):
-            task += f"\n上一轮的改进建议：{', '.join(state.review['suggestions'])}"
+            task += "\n## 上一轮的改进建议\n"
+            for s in state.review["suggestions"][:3]:
+                task += f"- {s}\n"
+
+        task += ("\n## 写作要求\n"
+                 "1. 必须引用具体论文（作者+年份），不要编造\n"
+                 "2. 对比不同方法的优劣\n"
+                 "3. 用中文撰写，专业术语保留英文\n"
+                 "4. 每个章节用 write_section 工具记录\n")
         return task
 
     def _build_critic_task(self, state: SharedState) -> str:
+        # 给 Critic 看综述原文（截断避免过长）
+        draft_preview = state.draft[:3000] if state.draft else "(综述为空)"
+        if len(state.draft) > 3000:
+            draft_preview += f"\n\n... (共 {len(state.draft)} 字，已截断)"
+
         return (
-            f"评估以下文献综述的质量（满分 10 分）：\n\n"
-            f"研究问题：{state.question}\n"
-            f"综述长度：{len(state.draft)} 字\n\n"
-            f"请从以下维度评分并给出具体反馈：\n"
-            f"1. 覆盖度：子问题是否都被回答\n"
-            f"2. 准确性：信息是否有论文支撑\n"
-            f"3. 连贯性：文章结构是否清晰\n"
-            f"4. 深度：分析是否有洞见\n"
+            f"评估以下文献综述的质量，使用 score_review 工具给出评分。\n\n"
+            f"## 研究问题\n{state.question}\n\n"
+            f"## 子问题\n" + "\n".join(f"- {q}" for q in state.sub_questions) + "\n\n"
+            f"## 综述内容\n{draft_preview}\n\n"
+            f"## 评估维度（每项 0-10 分）\n"
+            f"1. 覆盖度 (coverage): 子问题是否都被回答\n"
+            f"2. 准确性 (accuracy): 引用的论文是否真实，数据是否有出处\n"
+            f"3. 连贯性 (coherence): 结构是否清晰，段落过渡是否自然\n"
+            f"4. 深度 (depth): 分析是否有洞见，还是简单堆砌\n\n"
+            f"如果某维度低于 7 分，必须在 gaps 中说明具体缺什么。"
         )
 
     def summary(self, state: SharedState) -> str:
