@@ -1,0 +1,64 @@
+{
+  "naive+bm25": {
+    "recall@2": 0.46,
+    "recall@5": 0.64,
+    "mrr": 0.7266666666666667,
+    "full_hit_rate": 0.36,
+    "n": 50,
+    "time_seconds": 21.1
+  },
+  "naive+vector": {
+    "recall@2": 0.57,
+    "recall@5": 0.71,
+    "mrr": 0.85,
+    "full_hit_rate": 0.44,
+    "n": 50,
+    "time_seconds": 18.1
+  },
+  "naive+hybrid": {
+    "recall@2": 0.55,
+    "recall@5": 0.64,
+    "mrr": 0.7773333333333333,
+    "full_hit_rate": 0.38,
+    "n": 50,
+    "time_seconds": 17.7
+  },
+  "sw+bm25": {
+    "recall@2": 0.38,
+    "recall@5": 0.57,
+    "mrr": 0.696,
+    "full_hit_rate": 0.24,
+    "n": 50,
+    "time_seconds": 25.4
+  },
+  "sw+vector": {
+    "recall@2": 0.47,
+    "recall@5": 0.64,
+    "mrr": 0.8246666666666665,
+    "full_hit_rate": 0.32,
+    "n": 50,
+    "time_seconds": 26.2
+  },
+  "sw+hybrid": {
+    "recall@2": 0.53,
+    "recall@5": 0.64,
+    "mrr": 0.7913333333333334,
+    "full_hit_rate": 0.36,
+    "n": 50,
+    "time_seconds": 26.8
+  },
+  "sw+hybrid (test_split)": {
+    "recall@2": 0.5,
+    "recall@5": 0.66,
+    "mrr": 0.7746666666666667,
+    "full_hit_rate": 0.32,
+    "n": 25
+  },
+  "sw+hybrid+exp (test_split)": {
+    "recall@2": 0.46,
+    "recall@5": 0.6,
+    "mrr": 0.704,
+    "full_hit_rate": 0.28,
+    "n": 25
+  }
+}

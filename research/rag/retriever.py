@@ -135,29 +135,67 @@ class RAGRetriever:
         return results, rewritten
 
     def _rewrite_with_experience(self, query: str) -> str | None:
-        """基于历史经验改写 query"""
+        """基于 query 相似度的精准经验匹配
+
+        改进思路（v2）：
+        - v1（已废弃）: 全局高频关键词注入 -> 引入噪声，MRR 下降
+        - v2: 按 query 词重叠度匹配最相似的历史经验，只注入相似经验的关键词
+        - 加入负经验过滤：历史失败经验中的关键词不注入
+
+        学术对应：experience-conditioned query rewriting
+        """
         if not self._experiences:
             return None
 
-        # 找到历史上评分高的经验
         good_experiences = [e for e in self._experiences if e.result_score >= 7.0]
         if not good_experiences:
             return None
 
-        # 收集有效关键词
-        helpful_keywords = []
-        for exp in good_experiences[-10:]:  # 最近 10 条好经验
-            helpful_keywords.extend(exp.keywords_that_helped)
-
-        if not helpful_keywords:
+        # 计算当前 query 和每条经验的词重叠相似度
+        query_tokens = set(re.findall(r'[a-zA-Z][\w-]{2,}', query.lower()))
+        if not query_tokens:
             return None
 
-        # 用高频有效关键词增强 query
-        keyword_counts = Counter(helpful_keywords)
-        top_keywords = [kw for kw, _ in keyword_counts.most_common(3)]
+        scored = []
+        for exp in good_experiences:
+            exp_tokens = set(re.findall(r'[a-zA-Z][\w-]{2,}', exp.original_query.lower()))
+            if not exp_tokens:
+                continue
+            # Jaccard similarity
+            overlap = len(query_tokens & exp_tokens)
+            union = len(query_tokens | exp_tokens)
+            similarity = overlap / union if union > 0 else 0
+            if similarity > 0.1:  # 最低相似度阈值
+                scored.append((similarity, exp))
 
-        # 只添加 query 中不包含的关键词
-        additions = [kw for kw in top_keywords if kw.lower() not in query.lower()]
+        if not scored:
+            return None
+
+        # 取 top-3 最相似经验的关键词
+        scored.sort(key=lambda x: x[0], reverse=True)
+        top_exps = scored[:3]
+
+        helpful_keywords = []
+        for _, exp in top_exps:
+            helpful_keywords.extend(exp.keywords_that_helped)
+
+        # 负经验过滤：去掉历史失败经验中的关键词
+        bad_keywords = set()
+        for exp in self._experiences:
+            if exp.result_score <= 4.0:
+                bad_keywords.update(kw.lower() for kw in exp.keywords_that_missed)
+
+        # 去重、去已有、去负面
+        keyword_counts = Counter(helpful_keywords)
+        additions = []
+        for kw, _ in keyword_counts.most_common(5):
+            if (kw.lower() not in query.lower()
+                    and kw.lower() not in bad_keywords
+                    and len(kw) > 2):
+                additions.append(kw)
+            if len(additions) >= 2:  # 最多加 2 个词，避免过度干扰
+                break
+
         if not additions:
             return None
 
